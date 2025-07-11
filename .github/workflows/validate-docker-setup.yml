@@ -1,0 +1,49 @@
+name: Validate Docker Setup
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'Dockerfile'
+      - '.github/workflows/docker-build.yml'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Validate Dockerfile syntax
+      run: docker build --dry-run .
+
+    - name: Test multi-arch build (no push)
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64,linux/arm64
+        push: false
+        tags: test:latest
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Check for required secrets (info only)
+      run: |
+        echo "Checking if required secrets are configured..."
+        if [ -z "${{ secrets.DOCKERHUB_USERNAME }}" ]; then
+          echo "⚠️  DOCKERHUB_USERNAME secret is not set"
+        else
+          echo "✅ DOCKERHUB_USERNAME secret is configured"
+        fi
+        
+        if [ -z "${{ secrets.DOCKERHUB_TOKEN }}" ]; then
+          echo "⚠️  DOCKERHUB_TOKEN secret is not set"
+        else
+          echo "✅ DOCKERHUB_TOKEN secret is configured"
+        fi
+        
+        echo ""
+        echo "Note: Secrets are only available in the main workflow, not in pull requests for security reasons."
