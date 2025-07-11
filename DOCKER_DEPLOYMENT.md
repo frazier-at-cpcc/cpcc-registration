@@ -2,6 +2,8 @@
 
 This document explains how to set up automated Docker image builds for both x86_64 and ARM64 architectures using GitHub Actions and DockerHub.
 
+> **📋 For CapRover Deployment**: See [CAPROVER_DEPLOYMENT.md](./CAPROVER_DEPLOYMENT.md) for specific instructions on deploying to CapRover with separate Redis instances.
+
 ## Prerequisites
 
 1. A DockerHub account
@@ -144,6 +146,16 @@ Docker will automatically pull the correct architecture for your system.
    - Check the Actions tab in your GitHub repository for detailed logs
    - Ensure your Dockerfile works with both x86_64 and ARM64 architectures
 
+4. **Attestation Errors**
+   - If you see "Failed to get ID token" errors, the workflow will continue without attestations
+   - This is normal for some repository configurations and doesn't affect the Docker build
+   - Attestations provide additional security metadata but are optional
+
+5. **Permission Errors**
+   - Ensure your repository has the necessary permissions enabled
+   - Go to Settings → Actions → General → Workflow permissions
+   - Select "Read and write permissions" if builds fail with permission errors
+
 ### Viewing Build Status
 
 1. Go to your GitHub repository
@@ -181,6 +193,29 @@ platforms: linux/amd64,linux/arm64,linux/arm/v7
 
 Note: Additional platforms may increase build time significantly.
 
+## Environment Variable Configuration
+
+Your application uses these key environment variables for Redis connection:
+
+```bash
+# Redis Configuration (required)
+REDIS_URL=redis://localhost:6379/0
+
+# Alternative formats:
+REDIS_URL=redis://username:password@host:port/database
+REDIS_URL=redis://srv-captain--redis-app:6379  # CapRover internal DNS
+```
+
+### Platform-Specific Redis URLs
+
+| Platform | Redis URL Format | Example |
+|----------|------------------|---------|
+| **Docker Compose** | `redis://service-name:6379` | `redis://redis:6379` |
+| **CapRover** | `redis://srv-captain--app-name:6379` | `redis://srv-captain--registration-redis:6379` |
+| **Kubernetes** | `redis://service-name.namespace:6379` | `redis://redis.default:6379` |
+| **Local Development** | `redis://localhost:6379` | `redis://localhost:6379/0` |
+| **Redis Cloud** | `redis://user:pass@host:port` | `redis://user:pass@redis-12345.cloud.redislabs.com:12345` |
+
 ## Security Best Practices
 
 1. **Use Access Tokens**: Never use your DockerHub password in GitHub secrets
@@ -193,4 +228,4 @@ Note: Additional platforms may increase build time significantly.
 - GitHub Actions provides free minutes for public repositories
 - Private repositories have limited free minutes
 - DockerHub has rate limits for anonymous pulls
-- Consider using GitHub Container Registry (
+- Consider using GitHub Container Registry (ghcr.io) as an alternative
