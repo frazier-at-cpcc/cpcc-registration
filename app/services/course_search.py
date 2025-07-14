@@ -95,7 +95,63 @@ class CourseSearchService(LoggerMixin):
             self.log_error(e, "course search")
             raise
     
-    def _build_search_payload(self, subjects: List[str], term: Optional[str] = None) -> Dict[str, Any]:
+    async def _perform_search_with_page(self, subjects: List[str], term: Optional[str] = None, page_number: int = 1) -> CPCCSearchResponse:
+        """Perform search request for a specific page."""
+        try:
+            # Get authenticated HTTP client
+            client = await self.session_manager.get_authenticated_client()
+            
+            # Build search payload with page number
+            payload = self._build_search_payload(subjects, term, page_number)
+            
+            # Make request
+            url = f"{settings.cpcc_base_url}/Student/Courses/PostSearchCriteria"
+            
+            self.log_request("POST", url, subjects=subjects, term=term, page=page_number)
+            start_time = datetime.utcnow()
+            
+            response = await client.post(
+                url,
+                json=payload,
+                headers={
+                    "Content-Type": "application/json, charset=utf-8",
+                    "Accept": "application/json, text/javascript, */*; q=0.01"
+                }
+            )
+            
+            response_time = (datetime.utcnow() - start_time).total_seconds()
+            self.log_response(response.status_code, response_time)
+            
+            if response.status_code == 401 or response.status_code == 403:
+                # Session might be expired, try to refresh
+                self.logger.warning("Received authentication error, refreshing session")
+                await self.session_manager.refresh_session()
+                
+                # Retry with new session
+                client = await self.session_manager.get_authenticated_client()
+                response = await client.post(url, json=payload, headers={
+                    "Content-Type": "application/json, charset=utf-8",
+                    "Accept": "application/json, text/javascript, */*; q=0.01"
+                })
+            
+            if response.status_code != 200:
+                raise CPCCRequestError(
+                    f"Course search failed with status {response.status_code}",
+                    status_code=response.status_code,
+                    details={"subjects": subjects, "term": term, "page": page_number}
+                )
+            
+            # Parse response
+            return self._parse_search_response(response.json())
+            
+        except httpx.RequestError as e:
+            self.log_error(e, "course search")
+            raise CPCCRequestError(f"Network error during course search: {str(e)}")
+        except Exception as e:
+            self.log_error(e, "course search")
+            raise
+
+    def _build_search_payload(self, subjects: List[str], term: Optional[str] = None, page_number: int = 1) -> Dict[str, Any]:
         """Build the search payload for CPCC API."""
         payload = {
             "keyword": None,
@@ -125,7 +181,7 @@ class CourseSearchService(LoggerMixin):
             "endDate": None,
             "startsAtTime": None,
             "endsByTime": None,
-            "pageNumber": 1,
+            "pageNumber": page_number,
             "sortOn": "None",
             "sortDirection": "Ascending",
             "subjectsBadge": [],
@@ -141,7 +197,7 @@ class CourseSearchService(LoggerMixin):
             "openSectionsBadge": "",
             "openAndWaitlistedSectionsBadge": "",
             "subRequirementText": None,
-            "quantityPerPage": 30,
+            "quantityPerPage": 100,
             "openAndWaitlistedSections": None,
             "searchResultsView": "CatalogListing"
         }
@@ -197,9 +253,35 @@ class CourseSearchService(LoggerMixin):
     
     async def search_all_pages(self, subjects: List[str], term: Optional[str] = None) -> CPCCSearchResponse:
         """Search all pages of results for the given subjects."""
-        # For now, we'll implement single page search
-        # This can be extended to handle pagination if needed
-        return await self.search_courses(subjects, term)
+        all_courses = []
+        page_number = 1
+        total_pages = 1
+        
+        while page_number <= total_pages:
+            # Get current page
+            response = await self._perform_search_with_page(subjects, term, page_number)
+            
+            # Add courses from this page
+            all_courses.extend(response.courses)
+            
+            # Update pagination info
+            total_pages = response.total_pages
+            page_number += 1
+            
+            # Safety check to prevent infinite loops
+            if page_number > 10:  # Max 10 pages to prevent runaway
+                self.logger.warning(f"Reached maximum page limit (10) for subjects: {subjects}")
+                break
+        
+        # Return combined response
+        return CPCCSearchResponse(
+            courses=all_courses,
+            total_items=len(all_courses),
+            total_pages=total_pages,
+            current_page_index=1,
+            subjects=response.subjects if response else [],
+            active_plan_terms=response.active_plan_terms if response else []
+        )
     
     def get_course_section_mapping(self, search_response: CPCCSearchResponse) -> Dict[str, List[str]]:
         """Get a mapping of course IDs to their section IDs."""

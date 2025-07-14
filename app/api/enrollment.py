@@ -202,7 +202,7 @@ class EnrollmentAPI(LoggerMixin):
     ) -> Dict[str, List[str]]:
         """Search for courses in a subject and return course-to-section mapping."""
         try:
-            search_results = await self.course_search.search_courses(
+            search_results = await self.course_search.search_all_pages(
                 subjects=[subject],
                 term=term
             )
