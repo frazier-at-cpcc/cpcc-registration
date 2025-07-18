@@ -248,6 +248,7 @@ class EnrollmentAPI(LoggerMixin):
                     location=cpcc_section.location_display,
                     credits=cpcc_section.minimum_credits,
                     term=getattr(cpcc_section, 'term', None),
+                    instructors=cpcc_section.instructor_names,
                     meeting_times=[
                         {
                             "days": mt.days_of_week_display,

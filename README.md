@@ -113,26 +113,30 @@ curl "http://localhost:8000/api/v1/enrollment?subjects=CSC&use_cache=false"
   "sections": [
     {
       "section_id": "12345",
-      "course_code": "CSC-151",
-      "course_title": "JAVA Programming",
-      "section_number": "001",
-      "instructor": "John Doe",
-      "enrollment_info": {
-        "enrolled": 18,
-        "capacity": 25,
-        "available": 7,
-        "waitlist": 0,
-        "waitlist_capacity": 10
-      },
-      "schedule": {
-        "days": "MW",
-        "time": "10:00 AM - 11:50 AM",
-        "location": "CATO 234",
-        "start_date": "2024-01-08",
-        "end_date": "2024-05-06"
-      },
+      "course_id": "CSC-151",
+      "subject_code": "CSC",
+      "course_number": "151",
+      "section_number": "CSC-151-001",
+      "title": "JAVA Programming",
+      "available_seats": 7,
+      "total_capacity": 25,
+      "enrolled_count": 18,
+      "waitlist_count": 0,
+      "start_date": "2024-01-08",
+      "end_date": "2024-05-06",
+      "location": "CATO 234",
       "credits": 4,
-      "status": "Open"
+      "term": "Spring 2024",
+      "instructors": ["John Doe"],
+      "meeting_times": [
+        {
+          "days": "MW",
+          "start_time": "10:00 AM",
+          "end_time": "11:50 AM",
+          "location": "CATO 234",
+          "is_online": false
+        }
+      ]
     }
   ],
   "total_sections": 1,

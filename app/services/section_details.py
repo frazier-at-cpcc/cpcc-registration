@@ -145,6 +145,58 @@ class SectionDetailsService(LoggerMixin):
                             "is_online": meeting.get("IsOnline", False)
                         })
                     
+                    # Log available fields for debugging
+                    if hasattr(self, 'logger'):
+                        self.logger.info(f"Available section_info fields: {list(section_info.keys())}")
+                    
+                    # Extract instructor information
+                    instructor_names = []
+                    
+                    # Try multiple possible field names for instructor data
+                    instructor_fields = [
+                        "Instructors", "Faculty", "InstructorNames", "InstructorDisplay",
+                        "FacultyNames", "TeacherNames", "PrimaryInstructor", "InstructorList"
+                    ]
+                    
+                    for field in instructor_fields:
+                        if field in section_info:
+                            instructor_data = section_info[field]
+                            if isinstance(instructor_data, list):
+                                # Handle list of instructor objects or strings
+                                for instructor in instructor_data:
+                                    if isinstance(instructor, dict):
+                                        # Try common name fields in instructor objects
+                                        name = (instructor.get("Name") or
+                                               instructor.get("DisplayName") or
+                                               instructor.get("FullName") or
+                                               instructor.get("InstructorName") or
+                                               instructor.get("FacultyName"))
+                                        if name:
+                                            instructor_names.append(str(name).strip())
+                                    elif isinstance(instructor, str) and instructor.strip():
+                                        instructor_names.append(instructor.strip())
+                            elif isinstance(instructor_data, str) and instructor_data.strip():
+                                instructor_names.append(instructor_data.strip())
+                            break  # Found instructor data, stop looking
+                    
+                    # Also check meeting times for instructor information
+                    if not instructor_names:
+                        for meeting in section_info.get("FormattedMeetingTimes", []):
+                            meeting_instructor_fields = [
+                                "Instructor", "InstructorName", "Faculty", "FacultyName"
+                            ]
+                            for field in meeting_instructor_fields:
+                                if field in meeting and meeting[field]:
+                                    instructor_name = str(meeting[field]).strip()
+                                    if instructor_name and instructor_name not in instructor_names:
+                                        instructor_names.append(instructor_name)
+                    
+                    # Remove duplicates while preserving order
+                    unique_instructors = []
+                    for name in instructor_names:
+                        if name not in unique_instructors:
+                            unique_instructors.append(name)
+                    
                     # Create section detail
                     section = CPCCSectionDetail(
                         id=section_info.get("Id", ""),
@@ -159,7 +211,8 @@ class SectionDetailsService(LoggerMixin):
                         end_date=section_info.get("EndDateDisplay", ""),
                         location_display=section_info.get("LocationDisplay", ""),
                         minimum_credits=section_info.get("MinimumCredits"),
-                        formatted_meeting_times=meeting_times
+                        formatted_meeting_times=meeting_times,
+                        instructor_names=unique_instructors
                     )
                     
                     # Add term information to section

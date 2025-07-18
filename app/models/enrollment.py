@@ -45,6 +45,7 @@ class CourseSection(BaseModel):
     credits: Optional[float] = Field(None, description="Number of credit hours")
     term: Optional[str] = Field(None, description="Academic term")
     meeting_times: List[Dict[str, Any]] = Field(default_factory=list, description="Meeting times")
+    instructors: List[str] = Field(default_factory=list, description="Instructor names")
     
     class Config:
         json_schema_extra = {

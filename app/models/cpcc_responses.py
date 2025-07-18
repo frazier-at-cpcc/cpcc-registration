@@ -71,6 +71,7 @@ class CPCCSectionDetail(BaseModel):
     minimum_credits: Optional[float] = Field(None, description="Minimum credits")
     formatted_meeting_times: List[CPCCMeetingTime] = Field(default_factory=list, description="Meeting times")
     term: Optional[str] = Field(None, description="Academic term")
+    instructor_names: List[str] = Field(default_factory=list, description="Instructor names")
     
     @property
     def is_online(self) -> bool:

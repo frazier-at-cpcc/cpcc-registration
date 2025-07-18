@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.models.enrollment import EnrollmentResponse, CourseSection, EnrollmentInfo
+from app.models.enrollment import EnrollmentResponse, CourseSection
 
 
 @pytest.fixture
@@ -24,19 +24,20 @@ def sample_enrollment_response():
         sections=[
             CourseSection(
                 section_id="12345",
-                course_code="CSC-151",
-                course_title="JAVA Programming",
-                section_number="001",
-                instructor="John Doe",
-                enrollment_info=EnrollmentInfo(
-                    enrolled=18,
-                    capacity=25,
-                    available=7,
-                    waitlist=0,
-                    waitlist_capacity=10
-                ),
+                course_id="CSC-151",
+                subject_code="CSC",
+                course_number="151",
+                section_number="CSC-151-001",
+                title="JAVA Programming",
+                available_seats=7,
+                total_capacity=25,
+                enrolled_count=18,
+                waitlist_count=0,
+                start_date="2024-01-08",
+                end_date="2024-05-06",
+                location="CATO 234",
                 credits=4,
-                status="Open"
+                instructors=["John Doe"]
             )
         ],
         total_sections=1,
@@ -80,7 +81,8 @@ class TestEnrollmentEndpoints:
         assert data["subjects"] == ["CSC"]
         assert data["total_sections"] == 1
         assert len(data["sections"]) == 1
-        assert data["sections"][0]["course_code"] == "CSC-151"
+        assert data["sections"][0]["course_id"] == "CSC-151"
+        assert data["sections"][0]["instructors"] == ["John Doe"]
     
     def test_get_enrollment_missing_subjects(self, client):
         """Test enrollment endpoint with missing subjects parameter."""
