@@ -146,56 +146,61 @@ class SectionDetailsService(LoggerMixin):
                         })
                     
                     # Log available fields for debugging
+                    section_number = section_info.get('Number', section_info.get('SectionNameDisplay', 'unknown'))
                     if hasattr(self, 'logger'):
                         self.logger.info(f"Available section_info fields: {list(section_info.keys())}")
+                        # Log meeting data structure for debugging
+                        if "Meetings" in section_info:
+                            meetings_data = section_info['Meetings']
+                            self.logger.info(f"Meetings data for section {section_number}: {meetings_data}")
+                            if meetings_data and isinstance(meetings_data, list) and len(meetings_data) > 0:
+                                first_meeting = meetings_data[0]
+                                if isinstance(first_meeting, dict):
+                                    self.logger.info(f"First meeting object keys for section {section_number}: {list(first_meeting.keys())}")
+                                    self.logger.info(f"First meeting object content for section {section_number}: {first_meeting}")
+                        if "PrimarySectionMeetings" in section_info:
+                            primary_meetings_data = section_info['PrimarySectionMeetings']
+                            self.logger.info(f"PrimarySectionMeetings data for section {section_number}: {primary_meetings_data}")
+                            if primary_meetings_data and isinstance(primary_meetings_data, list) and len(primary_meetings_data) > 0:
+                                first_primary_meeting = primary_meetings_data[0]
+                                if isinstance(first_primary_meeting, dict):
+                                    self.logger.info(f"First primary meeting object keys for section {section_number}: {list(first_primary_meeting.keys())}")
+                                    self.logger.info(f"First primary meeting object content for section {section_number}: {first_primary_meeting}")
+                        if "FormattedMeetingTimes" in section_info:
+                            formatted_meetings = section_info['FormattedMeetingTimes']
+                            self.logger.info(f"FormattedMeetingTimes for section {section_number}: {formatted_meetings}")
+                            if formatted_meetings and isinstance(formatted_meetings, list) and len(formatted_meetings) > 0:
+                                first_formatted = formatted_meetings[0]
+                                if isinstance(first_formatted, dict):
+                                    self.logger.info(f"First formatted meeting keys for section {section_number}: {list(first_formatted.keys())}")
                     
-                    # Extract instructor information
+                    # Extract instructor information from the correct location
                     instructor_names = []
                     
-                    # Try multiple possible field names for instructor data
-                    instructor_fields = [
-                        "Instructors", "Faculty", "InstructorNames", "InstructorDisplay",
-                        "FacultyNames", "TeacherNames", "PrimaryInstructor", "InstructorList"
-                    ]
+                    # Debug: Log section_data keys to understand structure
+                    section_number = section_info.get('Number', section_info.get('SectionNameDisplay', 'unknown'))
+                    if hasattr(self, 'logger'):
+                        self.logger.info(f"DEBUG Section {section_number}: section_data keys = {list(section_data.keys())}")
                     
-                    for field in instructor_fields:
-                        if field in section_info:
-                            instructor_data = section_info[field]
-                            if isinstance(instructor_data, list):
-                                # Handle list of instructor objects or strings
-                                for instructor in instructor_data:
-                                    if isinstance(instructor, dict):
-                                        # Try common name fields in instructor objects
-                                        name = (instructor.get("Name") or
-                                               instructor.get("DisplayName") or
-                                               instructor.get("FullName") or
-                                               instructor.get("InstructorName") or
-                                               instructor.get("FacultyName"))
-                                        if name:
-                                            instructor_names.append(str(name).strip())
-                                    elif isinstance(instructor, str) and instructor.strip():
-                                        instructor_names.append(instructor.strip())
-                            elif isinstance(instructor_data, str) and instructor_data.strip():
-                                instructor_names.append(instructor_data.strip())
-                            break  # Found instructor data, stop looking
+                    # Primary method: Check FacultyDisplay field (string)
+                    faculty_display = section_data.get("FacultyDisplay", "")
+                    if faculty_display and faculty_display.strip():
+                        instructor_names.append(faculty_display.strip())
                     
-                    # Also check meeting times for instructor information
-                    if not instructor_names:
-                        for meeting in section_info.get("FormattedMeetingTimes", []):
-                            meeting_instructor_fields = [
-                                "Instructor", "InstructorName", "Faculty", "FacultyName"
-                            ]
-                            for field in meeting_instructor_fields:
-                                if field in meeting and meeting[field]:
-                                    instructor_name = str(meeting[field]).strip()
-                                    if instructor_name and instructor_name not in instructor_names:
-                                        instructor_names.append(instructor_name)
+                    # Secondary method: Check InstructorDetails array
+                    instructor_details = section_data.get("InstructorDetails", [])
+                    if instructor_details and isinstance(instructor_details, list):
+                        for instructor in instructor_details:
+                            if isinstance(instructor, dict):
+                                faculty_name = instructor.get("FacultyName", "")
+                                if faculty_name and faculty_name.strip():
+                                    faculty_name = faculty_name.strip()
+                                    if faculty_name not in instructor_names:
+                                        instructor_names.append(faculty_name)
                     
-                    # Remove duplicates while preserving order
-                    unique_instructors = []
-                    for name in instructor_names:
-                        if name not in unique_instructors:
-                            unique_instructors.append(name)
+                    # Log instructor extraction for debugging
+                    if hasattr(self, 'logger'):
+                        self.logger.info(f"INSTRUCTOR EXTRACTION Section {section_number}: FacultyDisplay='{faculty_display}', InstructorDetails={instructor_details}, extracted={instructor_names}")
                     
                     # Create section detail
                     section = CPCCSectionDetail(
@@ -212,7 +217,7 @@ class SectionDetailsService(LoggerMixin):
                         location_display=section_info.get("LocationDisplay", ""),
                         minimum_credits=section_info.get("MinimumCredits"),
                         formatted_meeting_times=meeting_times,
-                        instructor_names=unique_instructors
+                        instructor_names=instructor_names
                     )
                     
                     # Add term information to section
