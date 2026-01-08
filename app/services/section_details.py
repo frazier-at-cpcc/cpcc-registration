@@ -86,18 +86,19 @@ class SectionDetailsService(LoggerMixin):
             response_time = (datetime.utcnow() - start_time).total_seconds()
             self.log_response(response.status_code, response_time)
             
-            if response.status_code == 401 or response.status_code == 403:
+            if response.status_code in [302, 401, 403]:
                 # Session might be expired, try to refresh
-                self.logger.warning("Received authentication error, refreshing session")
+                # 302 redirects typically indicate redirect to login page
+                self.logger.warning(f"Received status {response.status_code}, refreshing session")
                 await self.session_manager.refresh_session()
-                
+
                 # Retry with new session
                 client = await self.session_manager.get_authenticated_client()
                 response = await client.post(url, json=payload, headers={
                     "Content-Type": "application/json, charset=utf-8",
                     "Accept": "application/json, text/javascript, */*; q=0.01"
                 })
-            
+
             if response.status_code != 200:
                 raise CPCCRequestError(
                     f"Section details request failed with status {response.status_code}",
