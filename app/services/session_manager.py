@@ -73,62 +73,88 @@ class CPCCSessionManager(LoggerMixin):
         """Initialize a new CPCC session."""
         await self._ensure_http_client()
         
-        # Clear any existing cookies to prevent 302 redirect loops
-        # If we send old/expired cookies, the server often redirects us back to the same page or login,
-        # causing a loop or failure to get new tokens.
-        if self._http_client:
-            self._http_client.cookies.clear()
+        max_retries = 3
+        retry_delay = 1
         
-        try:
-            # Visit the course catalog page to get cookies and tokens
-            # Use the Search endpoint which allows guest access, unlike the main Courses page
-            # which redirects to login.
-            url = f"{settings.cpcc_base_url}/Student/Courses/Search"
-            
-            self.log_request("GET", url)
-            start_time = datetime.utcnow()
-            
-            response = await self._http_client.get(url)
-            
-            response_time = (datetime.utcnow() - start_time).total_seconds()
-            self.log_response(response.status_code, response_time)
-            
-            if response.status_code != 200:
-                raise CPCCRequestError(
-                    f"Failed to access CPCC course catalog: {response.status_code}",
-                    status_code=response.status_code
+        for attempt in range(max_retries):
+            try:
+                # Clear any existing cookies to prevent 302 redirect loops
+                if self._http_client:
+                    self._http_client.cookies.clear()
+                
+                # Visit the course catalog page to get cookies and tokens
+                url = f"{settings.cpcc_base_url}/Student/Courses/Search"
+                
+                self.log_request("GET", url)
+                start_time = datetime.utcnow()
+                
+                response = await self._http_client.get(url)
+                
+                response_time = (datetime.utcnow() - start_time).total_seconds()
+                self.log_response(response.status_code, response_time)
+                
+                if response.status_code != 200:
+                    raise CPCCRequestError(
+                        f"Failed to access CPCC course catalog: {response.status_code}",
+                        status_code=response.status_code
+                    )
+                
+                # Extract cookies
+                cookies = dict(response.cookies)
+                # Check for the antiforgery cookie
+                if not cookies.get('.ColleagueSelfServiceAntiforgery'):
+                    # If this is not the last attempt, log warning and retry
+                    if attempt < max_retries - 1:
+                        self.logger.warning(f"Attempt {attempt+1}/{max_retries}: Failed to obtain required authentication cookie. Retrying...")
+                        await asyncio.sleep(retry_delay)
+                        retry_delay *= 2
+                        continue
+                    else:
+                        raise CPCCAuthenticationError(
+                            "Failed to obtain required authentication cookie"
+                        )
+                
+                # Parse HTML to extract CSRF token
+                csrf_token = self._extract_csrf_token(response.text)
+                if not csrf_token:
+                    if attempt < max_retries - 1:
+                        self.logger.warning(f"Attempt {attempt+1}/{max_retries}: Failed to extract CSRF token. Retrying...")
+                        await asyncio.sleep(retry_delay)
+                        retry_delay *= 2
+                        continue
+                    else:
+                        raise CPCCAuthenticationError(
+                            "Failed to extract CSRF token from response"
+                        )
+                
+                # Create session object
+                session = CPCCSession(
+                    cookies=cookies,
+                    csrf_token=csrf_token,
+                    expires_at=datetime.utcnow() + timedelta(seconds=settings.session_ttl_seconds)
                 )
-            
-            # Extract cookies
-            cookies = dict(response.cookies)
-            if not cookies.get('.ColleagueSelfServiceAntiforgery'):
-                raise CPCCAuthenticationError(
-                    "Failed to obtain required authentication cookie"
-                )
-            
-            # Parse HTML to extract CSRF token
-            csrf_token = self._extract_csrf_token(response.text)
-            if not csrf_token:
-                raise CPCCAuthenticationError(
-                    "Failed to extract CSRF token from response"
-                )
-            
-            # Create session object
-            session = CPCCSession(
-                cookies=cookies,
-                csrf_token=csrf_token,
-                expires_at=datetime.utcnow() + timedelta(seconds=settings.session_ttl_seconds)
-            )
-            
-            self.logger.info("Successfully initialized CPCC session")
-            return session
-            
-        except httpx.RequestError as e:
-            self.log_error(e, "session initialization")
-            raise CPCCSessionError(f"Network error during session initialization: {str(e)}")
-        except Exception as e:
-            self.log_error(e, "session initialization")
-            raise CPCCSessionError(f"Unexpected error during session initialization: {str(e)}")
+                
+                self.logger.info("Successfully initialized CPCC session")
+                return session
+                
+            except httpx.RequestError as e:
+                self.log_error(e, "session initialization")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay)
+                    retry_delay *= 2
+                    continue
+                raise CPCCSessionError(f"Network error during session initialization: {str(e)}")
+            except Exception as e:
+                # If we explicitly raised CPCCAuthenticationError above, re-raise it
+                if isinstance(e, (CPCCAuthenticationError, CPCCRequestError)):
+                    raise
+                
+                self.log_error(e, "session initialization")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay)
+                    retry_delay *= 2
+                    continue
+                raise CPCCSessionError(f"Unexpected error during session initialization: {str(e)}")
     
     def _extract_csrf_token(self, html_content: str) -> Optional[str]:
         """Extract CSRF token from HTML content."""

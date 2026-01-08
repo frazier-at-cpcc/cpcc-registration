@@ -8,7 +8,7 @@ import httpx
 from app.config import settings
 from app.core.exceptions import CPCCRequestError, CPCCParsingError, ValidationError
 from app.core.logging import LoggerMixin
-from app.models.cpcc_responses import CPCCSearchResponse, CPCCCourseInfo
+from app.models.cpcc_responses import CPCCSearchResponse, CPCCCourseInfo, CPCCTermInfo
 from app.services.session_manager import CPCCSessionManager
 
 
@@ -226,9 +226,16 @@ class CourseSearchService(LoggerMixin):
             # Parse terms information
             terms = []
             for term_data in response_data.get("ActivePlanTerms", []):
-                # Note: We're not parsing full term info here since it's complex
-                # and not immediately needed for enrollment data
-                pass
+                try:
+                    term = CPCCTermInfo(
+                        code=term_data.get("Code", ""),
+                        description=term_data.get("Description", ""),
+                        start_date=term_data.get("StartDate", datetime.now()), # Fallback if missing
+                        end_date=term_data.get("EndDate", datetime.now())      # Fallback if missing
+                    )
+                    terms.append(term)
+                except Exception as e:
+                    self.logger.warning(f"Failed to parse term data: {e}")
             
             search_response = CPCCSearchResponse(
                 courses=courses,
