@@ -111,32 +111,39 @@ class EnrollmentAPI(LoggerMixin):
             # Initialize session
             async with self.session_manager as session:
                 
-                # Search for courses in each subject
-                search_tasks = []
+                # Search for courses in each subject sequentially to avoid session conflicts
+                search_results = []
                 for subject in subjects:
-                    task = self._search_subject_courses(session, subject, term)
-                    search_tasks.append(task)
-                
-                # Execute searches concurrently with semaphore
-                semaphore = asyncio.Semaphore(settings.max_concurrent_requests)
-                search_results = await asyncio.gather(
-                    *[self._execute_with_semaphore(semaphore, task) for task in search_tasks],
-                    return_exceptions=True
-                )
-                
+                    try:
+                        self.logger.info(f"Searching for subject: {subject}")
+                        # Force a small delay between requests to be safe
+                        await asyncio.sleep(0.1)
+                        result = await self._search_subject_courses(session, subject, term)
+                        search_results.append(result)
+                    except Exception as e:
+                        error_msg = f"Failed to search subject {subject}: {str(e)}"
+                        errors.append(error_msg)
+                        self.log_error(e, f"subject search: {subject}")
+                        # Append empty result so indices match if we needed them, 
+                        # but we are just iterating results list.
+                        search_results.append(Exception(error_msg))
+
                 # Process search results and combine course-section mappings
                 combined_mapping = {}
                 for i, result in enumerate(search_results):
                     if isinstance(result, Exception):
-                        error_msg = f"Failed to search subject {subjects[i]}: {str(result)}"
-                        errors.append(error_msg)
-                        self.log_error(result, f"subject search: {subjects[i]}")
+                        # Already logged above
+                        continue
                     else:
                         # Merge the course-section mapping
                         combined_mapping.update(result)
                 
                 if not combined_mapping:
                     if errors:
+                        # If we have errors and no data, fail hard? 
+                        # User wants "Data should not be returned ... until all categories have data"
+                        # But partial data is better than no data? 
+                        # However, if COMPLETE failure, raise error.
                         raise CPCCError(f"No sections found. Errors: {'; '.join(errors)}", "search")
                     else:
                         # Return empty response
