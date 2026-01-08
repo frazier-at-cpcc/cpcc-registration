@@ -46,7 +46,8 @@ class CPCCSessionManager(LoggerMixin):
                     "Sec-Fetch-Mode": "navigate",
                     "Sec-Fetch-Site": "none",
                     "Sec-Fetch-User": "?1",
-                }
+                },
+                follow_redirects=True
             )
     
     async def _close_http_client(self) -> None:
@@ -71,6 +72,12 @@ class CPCCSessionManager(LoggerMixin):
     async def _initialize_session(self) -> CPCCSession:
         """Initialize a new CPCC session."""
         await self._ensure_http_client()
+        
+        # Clear any existing cookies to prevent 302 redirect loops
+        # If we send old/expired cookies, the server often redirects us back to the same page or login,
+        # causing a loop or failure to get new tokens.
+        if self._http_client:
+            self._http_client.cookies.clear()
         
         try:
             # Visit the course catalog page to get cookies and tokens
