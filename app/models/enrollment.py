@@ -71,7 +71,7 @@ class CourseSection(BaseModel):
 
 class EnrollmentResponse(BaseModel):
     """Response model for enrollment data requests."""
-    
+
     subjects: List[str] = Field(..., description="List of requested subject codes")
     term: Optional[str] = Field(None, description="Academic term")
     sections: List[CourseSection] = Field(..., description="List of course sections")
@@ -79,6 +79,8 @@ class EnrollmentResponse(BaseModel):
     retrieved_at: datetime = Field(..., description="When this data was retrieved")
     processing_time_seconds: float = Field(..., description="Processing time in seconds")
     errors: Optional[List[str]] = Field(None, description="Any errors encountered")
+    cached_at: Optional[datetime] = Field(None, description="When this data was cached")
+    cache_expires_at: Optional[datetime] = Field(None, description="When the cache expires")
     
     class Config:
         json_schema_extra = {
