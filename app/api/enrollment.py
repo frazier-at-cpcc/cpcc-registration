@@ -108,85 +108,105 @@ class EnrollmentAPI(LoggerMixin):
         errors = []
         
         try:
-            # Initialize session
-            async with self.session_manager as session:
+            # Determine which terms to search
+            if term is None:
+                # Auto-detect: search recent/active terms to ensure complete coverage
+                # Based on CSV analysis, sections span 2026SP, 2025FA, 2026SU
+                terms_to_search = ["2026SP", "2025FA", "2026SU"]
+                self.logger.info(f"No term specified, searching across terms: {terms_to_search}")
+            else:
+                terms_to_search = [term]
+            
+            # Search for courses in each subject across all terms
+            # Use section_id for deduplication to avoid duplicates across terms
+            all_course_mappings = {}  # section_id -> course_id mapping
+            
+            for current_term in terms_to_search:
+                self.logger.info(f"Searching term {current_term} for {len(subjects)} subjects")
                 
-                # Search for courses in each subject sequentially to avoid session conflicts
-                search_results = []
                 for subject in subjects:
                     try:
-                        self.logger.info(f"Searching for subject: {subject}")
-                        # Force a small delay between requests to be safe
+                        self.logger.info(f"Searching for subject: {subject} in term {current_term}")
+                        
+                        # Force a small delay between requests
                         await asyncio.sleep(0.1)
-                        result = await self._search_subject_courses(session, subject, term)
-                        search_results.append(result)
-                    except Exception as e:
-                        error_msg = f"Failed to search subject {subject}: {str(e)}"
-                        errors.append(error_msg)
-                        self.log_error(e, f"subject search: {subject}")
-                        # Append empty result so indices match if we needed them, 
-                        # but we are just iterating results list.
-                        search_results.append(Exception(error_msg))
-
-                # Process search results and combine course-section mappings
-                combined_mapping = {}
-                for i, result in enumerate(search_results):
-                    if isinstance(result, Exception):
-                        # Already logged above
-                        continue
-                    else:
-                        # Merge the course-section mapping
-                        combined_mapping.update(result)
-                
-                if not combined_mapping:
-                    if errors:
-                        # If we have errors and no data, fail hard? 
-                        # User wants "Data should not be returned ... until all categories have data"
-                        # But partial data is better than no data? 
-                        # However, if COMPLETE failure, raise error.
-                        raise CPCCError(f"No sections found. Errors: {'; '.join(errors)}", "search")
-                    else:
-                        # Return empty response
-                        return EnrollmentResponse(
-                            subjects=subjects,
-                            term=term,
-                            sections=[],
-                            total_sections=0,
-                            retrieved_at=start_time,
-                            processing_time_seconds=0.0,
-                            errors=[]
+                        
+                        # Ephemeral session/service for this subject+term combination
+                        subject_session = SessionManager()
+                        subject_search_service = CourseSearchService(subject_session)
+                        
+                        result = await self._search_subject_courses(
+                            subject_search_service, subject, current_term
                         )
+                        
+                        # Merge results - course_id to section_ids mapping
+                        for course_id, section_ids in result.items():
+                            if course_id not in all_course_mappings:
+                                all_course_mappings[course_id] = section_ids
+                            else:
+                                # Merge section lists, avoiding duplicates
+                                existing = set(all_course_mappings[course_id])
+                                for sid in section_ids:
+                                    if sid not in existing:
+                                        all_course_mappings[course_id].append(sid)
+                        
+                    except Exception as e:
+                        error_msg = f"Failed to search subject {subject} in term {current_term}: {str(e)}"
+                        errors.append(error_msg)
+                        self.log_error(e, f"subject search: {subject} term {current_term}")
+
+            # Check if we got any results
+            if not all_course_mappings:
+                if errors:
+                    raise CPCCError(f"No sections found. Errors: {'; '.join(errors)}", "search")
+                else:
+                    return EnrollmentResponse(
+                        subjects=subjects,
+                        term=term,
+                        sections=[],
+                        total_sections=0,
+                        retrieved_at=start_time,
+                        processing_time_seconds=0.0,
+                        errors=[]
+                    )
+            
+            total_sections = sum(len(section_ids) for section_ids in all_course_mappings.values())
+            self.logger.info(
+                f"Found {total_sections} total sections across {len(subjects)} subjects "
+                f"and {len(terms_to_search)} term(s)"
+            )
+            
+            # Get section details for all courses with a fresh session
+            try:
+                details_session = SessionManager()
+                details_service = SectionDetailsService(details_session)
                 
-                total_sections = sum(len(section_ids) for section_ids in combined_mapping.values())
-                self.logger.info(f"Found {total_sections} sections across {len(subjects)} subjects")
+                all_sections = await self._get_section_details(details_service, all_course_mappings)
                 
-                # Get section details for all courses
-                try:
-                    all_sections = await self._get_section_details(combined_mapping)
-                except Exception as e:
-                    error_msg = f"Failed to get section details: {str(e)}"
-                    errors.append(error_msg)
-                    self.log_error(e, "section details batch")
-                    all_sections = []
-                
-                # Calculate processing time
-                end_time = datetime.utcnow()
-                processing_time = (end_time - start_time).total_seconds()
-                
-                self.logger.info(
-                    f"Retrieved {len(all_sections)} sections with enrollment data "
-                    f"(processing_time: {processing_time:.2f}s, errors: {len(errors)})"
-                )
-                
-                return EnrollmentResponse(
-                    subjects=subjects,
-                    term=term,
-                    sections=all_sections,
-                    total_sections=len(all_sections),
-                    retrieved_at=start_time,
-                    processing_time_seconds=processing_time,
-                    errors=errors if errors else None
-                )
+            except Exception as e:
+                error_msg = f"Failed to get section details: {str(e)}"
+                errors.append(error_msg)
+                self.log_error(e, "section details batch")
+                all_sections = []
+            
+            # Calculate processing time
+            end_time = datetime.utcnow()
+            processing_time = (end_time - start_time).total_seconds()
+            
+            self.logger.info(
+                f"Retrieved {len(all_sections)} sections with enrollment data "
+                f"(processing_time: {processing_time:.2f}s, errors: {len(errors)})"
+            )
+            
+            return EnrollmentResponse(
+                subjects=subjects,
+                term=term,
+                sections=all_sections,
+                total_sections=len(all_sections),
+                retrieved_at=start_time,
+                processing_time_seconds=processing_time,
+                errors=errors if errors else None
+            )
                 
         except AuthenticationError:
             raise
@@ -203,13 +223,14 @@ class EnrollmentAPI(LoggerMixin):
     
     async def _search_subject_courses(
         self,
-        session: SessionManager,
+        search_service: CourseSearchService,
         subject: str,
         term: Optional[str]
     ) -> Dict[str, List[str]]:
         """Search for courses in a subject and return course-to-section mapping."""
         try:
-            search_results = await self.course_search.search_all_pages(
+            # Use the passed service instance
+            search_results = await search_service.search_all_pages(
                 subjects=[subject],
                 term=term
             )
@@ -228,22 +249,30 @@ class EnrollmentAPI(LoggerMixin):
     
     async def _get_section_details(
         self,
+        details_service: SectionDetailsService,
         course_section_mapping: Dict[str, List[str]]
     ) -> List[CourseSection]:
         """Get detailed enrollment information for sections."""
         try:
-            cpcc_sections = await self.section_details.get_section_details(
+            # Use the passed service instance
+            cpcc_sections = await details_service.get_section_details(
                 course_section_mapping=course_section_mapping
             )
             
             # Convert CPCC section details to CourseSection models
             course_sections = []
             for cpcc_section in cpcc_sections:
+                # Parse subject/course from section_number (e.g. "CSC-112-N850")
+                # section_number format: SUBJECT-NUMBER-SECTION
+                section_parts = cpcc_section.number.split('-') if cpcc_section.number else []
+                subject_code = section_parts[0] if len(section_parts) >= 1 else ""
+                course_number = section_parts[1] if len(section_parts) >= 2 else ""
+                
                 course_section = CourseSection(
                     section_id=cpcc_section.id,
                     course_id=cpcc_section.course_id,
-                    subject_code=cpcc_section.course_id.split('-')[0] if '-' in cpcc_section.course_id else "",
-                    course_number=cpcc_section.course_id.split('-')[1] if '-' in cpcc_section.course_id else "",
+                    subject_code=subject_code,
+                    course_number=course_number,
                     section_number=cpcc_section.number,
                     title=cpcc_section.title,
                     available_seats=cpcc_section.available,
