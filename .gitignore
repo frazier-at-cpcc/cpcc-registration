@@ -44,3 +44,4 @@ htmlcov/
 .DS_Store
 Thumbs.db
 Active and Dropped student counts by section and delivery method.csv
+supabase_2.72.0_linux_amd64.rpm
