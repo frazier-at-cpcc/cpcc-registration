@@ -130,101 +130,71 @@ class SectionDetailsService(LoggerMixin):
                 term_sections = term_data.get("Sections", [])
                 
                 for section_data in term_sections:
-                    section_info = section_data.get("Section", {})
-                    
-                    # Extract meeting times
-                    meeting_times = []
-                    for meeting in section_info.get("FormattedMeetingTimes", []):
-                        meeting_times.append({
-                            "days_of_week_display": meeting.get("DaysOfWeekDisplay", ""),
-                            "start_time_display": meeting.get("StartTimeDisplay", ""),
-                            "end_time_display": meeting.get("EndTimeDisplay", ""),
-                            "instructional_method_display": meeting.get("InstructionalMethodDisplay", ""),
-                            "building_display": meeting.get("BuildingDisplay", ""),
-                            "room_display": meeting.get("RoomDisplay", ""),
-                            "dates_display": meeting.get("DatesDisplay", ""),
-                            "is_online": meeting.get("IsOnline", False)
-                        })
-                    
-                    # Log available fields for debugging
-                    section_number = section_info.get('Number', section_info.get('SectionNameDisplay', 'unknown'))
-                    if hasattr(self, 'logger'):
-                        self.logger.info(f"Available section_info fields: {list(section_info.keys())}")
-                        # Log meeting data structure for debugging
-                        if "Meetings" in section_info:
-                            meetings_data = section_info['Meetings']
-                            self.logger.info(f"Meetings data for section {section_number}: {meetings_data}")
-                            if meetings_data and isinstance(meetings_data, list) and len(meetings_data) > 0:
-                                first_meeting = meetings_data[0]
-                                if isinstance(first_meeting, dict):
-                                    self.logger.info(f"First meeting object keys for section {section_number}: {list(first_meeting.keys())}")
-                                    self.logger.info(f"First meeting object content for section {section_number}: {first_meeting}")
-                        if "PrimarySectionMeetings" in section_info:
-                            primary_meetings_data = section_info['PrimarySectionMeetings']
-                            self.logger.info(f"PrimarySectionMeetings data for section {section_number}: {primary_meetings_data}")
-                            if primary_meetings_data and isinstance(primary_meetings_data, list) and len(primary_meetings_data) > 0:
-                                first_primary_meeting = primary_meetings_data[0]
-                                if isinstance(first_primary_meeting, dict):
-                                    self.logger.info(f"First primary meeting object keys for section {section_number}: {list(first_primary_meeting.keys())}")
-                                    self.logger.info(f"First primary meeting object content for section {section_number}: {first_primary_meeting}")
-                        if "FormattedMeetingTimes" in section_info:
-                            formatted_meetings = section_info['FormattedMeetingTimes']
-                            self.logger.info(f"FormattedMeetingTimes for section {section_number}: {formatted_meetings}")
-                            if formatted_meetings and isinstance(formatted_meetings, list) and len(formatted_meetings) > 0:
-                                first_formatted = formatted_meetings[0]
-                                if isinstance(first_formatted, dict):
-                                    self.logger.info(f"First formatted meeting keys for section {section_number}: {list(first_formatted.keys())}")
-                    
-                    # Extract instructor information from the correct location
-                    instructor_names = []
-                    
-                    # Debug: Log section_data keys to understand structure
-                    section_number = section_info.get('Number', section_info.get('SectionNameDisplay', 'unknown'))
-                    if hasattr(self, 'logger'):
-                        self.logger.info(f"DEBUG Section {section_number}: section_data keys = {list(section_data.keys())}")
-                    
-                    # Primary method: Check FacultyDisplay field (string)
-                    faculty_display = section_data.get("FacultyDisplay", "")
-                    if faculty_display and faculty_display.strip():
-                        instructor_names.append(faculty_display.strip())
-                    
-                    # Secondary method: Check InstructorDetails array
-                    instructor_details = section_data.get("InstructorDetails", [])
-                    if instructor_details and isinstance(instructor_details, list):
-                        for instructor in instructor_details:
-                            if isinstance(instructor, dict):
-                                faculty_name = instructor.get("FacultyName", "")
-                                if faculty_name and faculty_name.strip():
-                                    faculty_name = faculty_name.strip()
-                                    if faculty_name not in instructor_names:
-                                        instructor_names.append(faculty_name)
-                    
-                    # Log instructor extraction for debugging
-                    if hasattr(self, 'logger'):
-                        self.logger.info(f"INSTRUCTOR EXTRACTION Section {section_number}: FacultyDisplay='{faculty_display}', InstructorDetails={instructor_details}, extracted={instructor_names}")
-                    
-                    # Create section detail
-                    section = CPCCSectionDetail(
-                        id=section_info.get("Id", ""),
-                        course_id=section_info.get("CourseId", ""),
-                        number=section_info.get("SectionNameDisplay", ""),
-                        title=section_info.get("SectionTitleDisplay", ""),
-                        available=section_info.get("Available", 0),
-                        capacity=section_info.get("Capacity", 0),
-                        enrolled=section_info.get("Enrolled", 0),
-                        waitlisted=section_info.get("Waitlisted", 0),
-                        start_date=section_info.get("StartDateDisplay", ""),
-                        end_date=section_info.get("EndDateDisplay", ""),
-                        location_display=section_info.get("LocationDisplay", ""),
-                        minimum_credits=section_info.get("MinimumCredits"),
-                        formatted_meeting_times=meeting_times,
-                        instructor_names=instructor_names
-                    )
-                    
-                    # Add term information to section
-                    section.term = term_info.get("Description", "")
-                    
-                    sections.append(section)
+                    try:
+                        section_info = section_data.get("Section", {})
+                        
+                        # Extract meeting times
+                        meeting_times = []
+                        for meeting in section_info.get("FormattedMeetingTimes", []):
+                            meeting_times.append({
+                                "days_of_week_display": meeting.get("DaysOfWeekDisplay", ""),
+                                "start_time_display": meeting.get("StartTimeDisplay", ""),
+                                "end_time_display": meeting.get("EndTimeDisplay", ""),
+                                "instructional_method_display": meeting.get("InstructionalMethodDisplay", ""),
+                                "building_display": meeting.get("BuildingDisplay", ""),
+                                "room_display": meeting.get("RoomDisplay", ""),
+                                "dates_display": meeting.get("DatesDisplay", ""),
+                                "is_online": meeting.get("IsOnline", False)
+                            })
+                        
+                        # Extract instructor information
+                        instructor_names = []
+                        
+                        # Primary method: Check FacultyDisplay field (string)
+                        faculty_display = section_data.get("FacultyDisplay", "")
+                        if faculty_display and faculty_display.strip():
+                            instructor_names.append(faculty_display.strip())
+                        
+                        # Secondary method: Check InstructorDetails array
+                        instructor_details = section_data.get("InstructorDetails", [])
+                        if instructor_details and isinstance(instructor_details, list):
+                            for instructor in instructor_details:
+                                if isinstance(instructor, dict):
+                                    faculty_name = instructor.get("FacultyName", "")
+                                    if faculty_name and faculty_name.strip():
+                                        faculty_name = faculty_name.strip()
+                                        if faculty_name not in instructor_names:
+                                            instructor_names.append(faculty_name)
+                        
+                        # Create section detail
+                        section = CPCCSectionDetail(
+                            id=section_info.get("Id", ""),
+                            course_id=section_info.get("CourseId", ""),
+                            number=section_info.get("SectionNameDisplay", ""),
+                            title=section_info.get("SectionTitleDisplay", ""),
+                            available=section_info.get("Available", 0),
+                            capacity=section_info.get("Capacity", 0),
+                            enrolled=section_info.get("Enrolled", 0),
+                            waitlisted=section_info.get("Waitlisted", 0),
+                            start_date=section_info.get("StartDateDisplay", ""),
+                            end_date=section_info.get("EndDateDisplay", ""),
+                            location_display=section_info.get("LocationDisplay", ""),
+                            minimum_credits=section_info.get("MinimumCredits"),
+                            formatted_meeting_times=meeting_times,
+                            instructor_names=instructor_names
+                        )
+                        
+                        # Add term information to section
+                        section.term = term_info.get("Description", "")
+                        
+                        sections.append(section)
+                        
+                    except Exception as e:
+                        # Log error for this specific section but continue with others
+                        section_num = section_data.get("Section", {}).get("SectionNameDisplay", "unknown")
+                        if hasattr(self, 'logger'):
+                            self.logger.error(f"Failed to parse section {section_num}: {str(e)}", exc_info=True)
+                        continue
             
             return sections
             
