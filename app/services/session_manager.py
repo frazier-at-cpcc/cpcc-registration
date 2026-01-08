@@ -81,7 +81,9 @@ class CPCCSessionManager(LoggerMixin):
         
         try:
             # Visit the course catalog page to get cookies and tokens
-            url = f"{settings.cpcc_base_url}/Student/Courses"
+            # Use the Search endpoint which allows guest access, unlike the main Courses page
+            # which redirects to login.
+            url = f"{settings.cpcc_base_url}/Student/Courses/Search"
             
             self.log_request("GET", url)
             start_time = datetime.utcnow()
